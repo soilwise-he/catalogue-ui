@@ -1,0 +1,22 @@
+{% extends "_base.html" %}
+{% block title %}{{ super() }} Home {% endblock %}
+
+{% block body %}
+<div class="row">
+  <section id="predictive-modeling" class="level2 col-md-6 col-12 mt-3">
+  <h1 class="anchored" data-anchor-id="predictive-modeling">
+    {{ config['metadata']['identification']['title'] }}
+    </h1>
+  <p>  
+    {{ config['metadata']['identification']['description'] }}</p>
+  </section>
+  <div class="col-md-6 col-12 mt-3">
+  <p><img src="https://soilwise-he.eu/wp-content/uploads/elementor/thumbs/soilwise-hero-section-visual-qf0gntbjywq8b3pbo5aocu3zbawtzem0c4tu5apauk.png" class="img-fluid"></p>
+  </div>
+  </div>          
+  <div class="bg-sec py-3" style="margin-left:-16px;margin-right:-16px;--bs-bg-opacity: .25;">
+  <section id="search" class="container pt-1 pb-5">
+    {% include 'search_and_recent.html' %}
+  </section>
+</div>
+{% endblock %}

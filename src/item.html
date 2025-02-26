@@ -1,0 +1,480 @@
+{% extends "_base.html" %}
+{% block title %} {{ data['properties']['title'] }} {% endblock %}
+{% block extrahead %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #records-map {
+            height: 350px;
+        }
+    </style>
+<script type="application/ld+json">
+    {% set schema_org = data['properties'].copy() %}
+    {% set foo = schema_org.update({'name': data['properties'].get('title',data['id']),'@context':"http://schema.org/", '@type': ('schema:'+data['properties'].get('type','').split('/').pop()), '@id':(config['server']['url']+"/collections/"+data['collection']+"/items/"+data['id']) }) %}
+    {% set foo = schema_org.pop('title','') %}
+    {% set foo = schema_org.pop('type','') %}
+    {{ schema_org | to_json }}
+</script>
+{% endblock %}
+
+{% block formats %}
+  {{ super() }} | <a href="?f=xml">XML</a>
+{% endblock %}
+
+{% block crumbs %}
+{{ super() }} /
+<a href="{{ config['server']['url'] }}/collections/{{ data['collection'] }}/items">List</a> /
+<a href="{{ config['server']['url'] }}/collections/{{ data['collection'] }}/items/{{ data['id'] }}">{{ data['properties']['title']|truncate(50) or data['id']  }}</a>
+{% endblock %}
+{% block body %}
+
+<section id="item">
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12 col-md-8">
+      <div class="border border-secondary px-2 mb-3 rounded-pill w-25 text-center">{{ data['properties'].get('type','').split('/') | last | capitalize }}</div>
+
+          <h1>{{ data['properties']['title'] or data['id'] }}</h1>
+         
+          <p class="pb-5">
+            {{ data['properties']['description'] | safe | urlize }}
+          </p>
+
+          <p>
+            
+            {% set used = [] %}
+            {% for theme in data['properties'].get('themes',[]) %}
+              {% for concept in theme.get('concepts',[]) %}
+                {% set u = used.append(concept['id']) %}
+                <a href="{{ config['server']['url'] }}/collections/{{ data['collection'] }}/items?keywords={{ concept['id'] or concept['url'] }}" 
+                  title="From: {{ theme.get('scheme','') }}" class="px-3  mb-2 btn btn-sm btn-outline-dark rounded-pill  text-dark">{{ concept['id'] or concept['url'] }}</a>
+              
+              {% endfor %}
+            {% endfor %}
+
+            {% for keyword in data['properties'].get('keywords',[]) %}
+              {% if not keyword in used %}
+              <a href="{{ config['server']['url'] }}/collections/{{ data['collection'] }}/items?keywords={{ keyword }}" 
+                class="px-3  mb-2 btn btn-sm btn-outline-dark rounded-pill  text-dark">{{ keyword }}</a>
+              {% endif %}
+            {% endfor %}
+      </p>
+
+      </div>
+      <div class="col-12 col-md-4">
+        <div>
+          <div id="records-map"></div>
+          {% for l in data['links'] %}
+            {% if l['rel'] == 'preview' %}
+            <div id="preview" class="py-3">
+            <a href="{{ l['href'] }}" target="thumb">
+            <img src="{{ l['href'] }}" title="preview of the dataset" class="border rounded shadow w-100" onerror="this.style.display='none'"></a>
+            </div>{% endif %}
+            {% endfor %}
+          <div id="isByProject" class="py-3"></div>
+          <div id="isReferencedBy" class="py-3"></div>
+        </div>
+      </div>
+</div>
+
+      <section class="special-section">
+         
+
+<div class="row">
+  <div class="col-12 col-md-6">
+
+    {% if data['properties']['contacts'] %}
+    <b>Contacts</b>
+    <p>
+      {% for cnt in data['properties']['contacts'] %}
+        <b>{{ cnt['name'] or cnt['organization']  }}</b><br/>
+        {% if 'roles' in cnt %}
+        Role: {{ cnt['roles'] | join(', ') }}<br/>{% endif %} 
+        {% if 'position' in cnt and cnt['position'] not in [None,''] %}
+        Position: {{ cnt['position'] }}<br/>{% endif %}
+        {% for e in cnt.get('phones',[]) %}
+          {% if 'value' in e and e['value'] not in [None,''] %}Phone: {{ e['value'] }}<br/>{% endif %}
+        {% endfor %}
+        {% for e in cnt.get('emails',[]) %}
+          {% if 'value' in e and e['value'] not in [None,''] %}Email: {{ e['value'] | urlize }}<br/>{% endif %}
+        {% endfor %}
+        {% for e in cnt.get('addresses',[]) %}
+           {% for a,b in e.items() %}
+           {% if a == 'deliveryPoint' %}
+            {% if e[a][0] and e[a][0] not in [None,'']  %}
+              {{a | capitalize}}: {{ b | join(', ') }}<br/>{% endif %}
+           {% else %}
+              {% if b %}{{a | capitalize}}: {{ b }}<br/> {% endif %}
+           {% endif %}
+           {% endfor %}
+        {% endfor %}
+
+        {% if 'links' in cnt %}
+          Url:
+        {% for e in cnt.get('links',[]) %}
+          {% if 'url' in e and e['url'] not in [None,''] %}
+            <a href="{{ e['url'] }}" target="_blank">{{ e['name'] or e['url'] }}</a>
+          {% endif %} 
+        {% endfor %}<br/>
+        {% endif %}
+      
+      {% endfor %}
+    </p>
+  {% endif %}
+
+
+          <b>Temporal</b>
+          <p>
+          {% if data['properties']['created'] %} Created: {{ data['properties']['created'] }}	<br>{% endif %}
+          {% if data['properties']['updated'] %} Updated: {{ data['properties']['updated'] }} <br>{% endif %}
+          {% if data['time'] %}
+          Temporal extent: {% if data['time'] is string %}{{ data['time'] }}{% else %}{{ data['time'] | join(' - ') }}{% endif %}
+          {% endif %}
+          </p>
+
+          {% if data['properties']['formats'] %}
+           <b>Formats</b>
+           <ul>
+            {% for f in data['properties'].get('formats',[]) %}
+              {% if 'name' in f and f['name'] not in [None,'','canonical'] %}
+                <li>{{ f.name }}</li>
+              {% endif %}
+            {% endfor %}
+           </ul>
+          {% endif %}
+           
+          {% if data['properties']['externalIds'] %}
+          <b>External identification</b>
+          <ul>
+              {% for id in data['properties']['externalIds'] %}
+                  <li>
+                    <i>{{ id['scheme'] | urlize }}</i> {{ id['value'] | urlize }}
+                    {% if 'doi.org' in id['value'] %}
+                    <br/><i><span id="sources"></span></i>
+                    <script>sources = "{{ id['value'].split('doi.org/').pop() }}";</script>{% endif %}
+                  </li>
+              {% endfor %}
+          </ul>
+          {% endif %}
+
+          {% if data['properties']['license'] %}
+            <b>License:</b> {{ data['properties']['license'] | urlize }}<br/><br/>
+          {% endif %}
+
+          {% if data['properties']['rights'] %}
+          <b>Rights:</b> {{ data['properties']['rights'] }}<br/><br/>
+          {% endif %}
+          {% if data['properties']['language'] %}
+          <b>Language:</b> {{ data['properties']['language'] }}<br/><br/>
+          {% endif %}
+
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="border border-dark rounded shadow bg-white p-3 overflow-hidden" id="link-section">
+          <h3>Links</h3>
+            {% for link in data['links'] %}
+            {% if link['rel']|lower not in ['preview','collection','canonical','self'] %}
+            <div class="row pt-2">
+              <div class="col-2">
+                {% if link['rel'] == 'map' %}
+                <svg class="svg-icon" viewBox="0 0 20 20" title="Map {{link.get('type','')}}">
+                  <path d="M18.092,5.137l-3.977-1.466h-0.006c0.084,0.042-0.123-0.08-0.283,0H13.82L10,5.079L6.178,3.671H6.172c0.076,0.038-0.114-0.076-0.285,0b.884L1.908,5.137c-0.151,0.062-0.25,0.207-0.25,0.369v10.451c0,0.691,0.879,0.244,0.545,0.369l3.829-1.406l3.821,1.406c0.186,0.062,0.385-0.029,0.294,0l3.822-1.406l3.83,1.406c0.26,0.1,0.543-0.08,0.543-0.369V5.506C18.342,5.344,18.242,5.199,18.092,5.137 M5.633,14.221l-3.181,1.15V5.776l3.181-1.15V14.221z M9.602,15.371l-3.173-1.15V4.626l3.173,1.15V15.371z M13.57,14.221l-3.173,1.15V5.776l3.173-1.15V14.221z M17.547,15.371l-3.182-1.15V4.626l3.182,1.15V15.371z"></path>
+                </svg>
+                {% elif link['rel'] in [None,'','WWW:LINK'] %}
+                <svg class="svg-icon" viewBox="0 0 20 20" title="Website {{link.get('type','')}}">
+                  <path d="M16.469,8.924l-2.414,2.413c-0.156,0.156-0.408,0.156-0.564,0c-0.156-0.155-0.156-0.408,0-0.563l2.414-2.414c1.175-1.175,1.175-3.087,0-4.262c-0.57-0.569-1.326-0.883-2.132-0.883s-1.562,0.313-2.132,0.883L9.227,6.511c-1.175,1.175-1.175,3.087,0,4.263c0.288,0.288,0.624,0.511,0.997,0.662c0.204,0.083,0.303,0.315,0.22,0.52c-0.171,0.422-0.643,0.17-0.52,0.22c-0.473-0.191-0.898-0.474-1.262-0.838c-1.487-1.485-1.487-3.904,0-5.391l2.414-2.413c0.72-0.72,1.678-1.117,2.696-1.117s1.976,0.396,2.696,1.117C17.955,5.02,17.955,7.438,16.469,8.924 M10.076,7.825c-0.205-0.083-0.437,0.016-0.52,0.22c-0.083,0.205,0.016,0.437,0.22,0.52c0.374,0.151,0.709,0.374,0.997,0.662c1.176,1.176,1.176,3.088,0,4.263l-2.414,2.413c-0.569,0.569-1.326,0.883-2.131,0.883s-1.562-0.313-2.132-0.883c-1.175-1.175-1.175-3.087,0-4.262L6.51,9.227c0.156-0.155,0.156-0.408,0-0.564c-0.156-0.156-0.408-0.156-0.564,0l-2.414,2.414c-1.487,1.485-1.487,3.904,0,5.391c0.72,0.72,1.678,1.116,2.696,1.116s1.976-0.396,2.696-1.116l2.414-2.413c1.487-1.486,1.487-3.905,0-5.392C10.974,8.298,10.55,8.017,10.076,7.825"></path>
+                </svg>
+                {% else %}
+                <svg class="svg-icon" viewBox="0 0 20 20" title="Download {{link.get('type','')}}">
+                  <path d="M13.962,8.885l-3.736,3.739c-0.086,0.086-0.201,0.13-0.314,0.13S9.686,12.71,9.6,12.624l-3.562-3.56C5.863,8.892,5.863,8.611,6.036,8.438c0.175-0.173,0.454-0.173,0.626,0l3.25,3.247l3.426-3.424c0.173-0.172,0.451-0.172,0.624,0C14.137,8.434,14.137,8.712,13.962,8.885 M18.406,10c0,4.644-3.763,8.406-8.406,8.406S1.594,14.644,1.594,10S5.356,1.594,10,1.594S18.406,5.356,18.406,10 M17.521,10c0-4.148-3.373-7.521-7.521-7.521c-4.148,0-7.521,3.374-7.521,7.521c0,4.147,3.374,7.521,7.521,7.521C14.148,17.521,17.521,14.147,17.521,10"></path>
+                </svg>
+                {% endif %}
+              </div>
+              <div class="col-10">
+                <a href="{{ link['href'] }}" target="_blank">
+                {{ (link['title'] or link['name'] or link['href']) | truncate(35) }}</a>
+                {% if link['description'] not in [None,'None',''] %}
+                <br>{{ link['description'] }}{% endif %}
+              </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+            {# this adds doi from id, because it is often not included as link, but relevant #}
+            {% if data['id'].startswith('10.') %}
+            <div class="row">
+              <div class="col-2"><svg class="svg-icon" viewBox="0 0 20 20" title="DOI">
+                <path d="M16.469,8.924l-2.414,2.413c-0.156,0.156-0.408,0.156-0.564,0c-0.156-0.155-0.156-0.408,0-0.563l2.414-2.414c1.175-1.175,1.175-3.087,0-4.262c-0.57-0.569-1.326-0.883-2.132-0.883s-1.562,0.313-2.132,0.883L9.227,6.511c-1.175,1.175-1.175,3.087,0,4.263c0.288,0.288,0.624,0.511,0.997,0.662c0.204,0.083,0.303,0.315,0.22,0.52c-0.171,0.422-0.643,0.17-0.52,0.22c-0.473-0.191-0.898-0.474-1.262-0.838c-1.487-1.485-1.487-3.904,0-5.391l2.414-2.413c0.72-0.72,1.678-1.117,2.696-1.117s1.976,0.396,2.696,1.117C17.955,5.02,17.955,7.438,16.469,8.924 M10.076,7.825c-0.205-0.083-0.437,0.016-0.52,0.22c-0.083,0.205,0.016,0.437,0.22,0.52c0.374,0.151,0.709,0.374,0.997,0.662c1.176,1.176,1.176,3.088,0,4.263l-2.414,2.413c-0.569,0.569-1.326,0.883-2.131,0.883s-1.562-0.313-2.132-0.883c-1.175-1.175-1.175-3.087,0-4.262L6.51,9.227c0.156-0.155,0.156-0.408,0-0.564c-0.156-0.156-0.408-0.156-0.564,0l-2.414,2.414c-1.487,1.485-1.487,3.904,0,5.391c0.72,0.72,1.678,1.116,2.696,1.116s1.976-0.396,2.696-1.116l2.414-2.413c1.487-1.486,1.487-3.905,0-5.392C10.974,8.298,10.55,8.017,10.076,7.825"></path>
+              </svg></div>
+              <div class="col-10">
+                <a href="https://doi.org/{{ data['id'] }}" target="_blank">{{ data['id'] }}</a>
+              </div>
+            </div> 
+            {% endif %}
+            
+         
+        </div>
+      </div>
+ </section>
+      <hr class="my-3"/>
+      <script src="https://giscus.app/client.js"
+        data-repo="soilwise-he/technical-bugs"
+        data-repo-id="R_kgDONPXFyw"
+        data-category="Q&A"
+        data-category-id="DIC_kwDONPXFy84Ckc5q"
+        data-mapping="title"
+        data-strict="0"
+        data-reactions-enabled="0"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="noborder_light"
+        data-lang="en"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async></script>
+
+    </div>
+
+  </div> <small style="float:right">
+          {% if data['properties']['updated'] %} Updated: {{ data['properties']['updated'].split('T') | first }}{% endif %}
+          {% for l in data['links'] %}
+          {% if l['rel'] == 'canonical' %} <a href="{{ l['href'] }}" target="_blank">Feedback via GIT</a>{% endif %}
+          {% endfor %}
+
+          </small>
+</div>
+</section>
+
+<!--  http://svgicons.sparkk.fr/ -->
+<style>
+.svg-icon {width: 2em;  height: 2em;}
+
+.svg-icon path,
+.svg-icon polygon,
+.svg-icon rect {
+  fill: #4691f6;
+}
+
+.svg-icon circle {
+  stroke: #4691f6;
+  stroke-width: 1;
+}
+</style>
+
+{% endblock %}
+
+{% block extrafoot %}
+<script>
+var map = L.map('records-map').setView([0, 0], 1);
+osm = new L.TileLayer(
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: 'Map data &copy; <a href="https://openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a>'
+    }
+).addTo(map);
+var geojson_data = {{ data | to_json }};
+var items = new L.GeoJSON(geojson_data);
+
+map.addLayer(items);
+var bounds = items.getBounds();
+if (bounds.isValid() === true) {
+    map.fitBounds(bounds);
+}
+
+var baseMaps = {
+    "OpenStreetMap": osm
+};
+try {
+  var overlayMaps = {
+  {% for link in data['links'] %}{% 
+      if ('protocol' in link.keys() and link['protocol'] not in [None,''] and 'wms' in link['protocol'].lower())
+        or link['rel'] == 'map' or 'service=WMS' in link['href'] %}{% 
+        if 'layers=' in  link['href'] %}{% 
+          set layer = link['href'].split("layers=")[1].split('&')[0] %}{% 
+        else %}{% 
+          set layer = link['name'] %}{% 
+        endif %}{% 
+        if layer %}{% 
+          set wms = (link['href'].split('?')[0] + '?' + ('map='+ link['href'].split('map=').pop().split('&')[0] if 'map=' in link['href'] else '')) %}
+        "{{ link['title'] or layer }}":  L.tileLayer.wms("{{ wms }}&", { "layers":"{{  layer | replace('%3A',':') }}", "opacity":.7, "transparent": true, "format": "image/png" }).addTo(map),{% 
+        endif %}{% 
+      endif %}{% 
+    endfor %}
+  };
+} catch (e) { 
+  console.log(e); 
+  overlayMaps = {}; 
+} 
+
+var layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+var highlightStyle = {
+    color: 'red',
+    dashArray: '',
+    fillOpacity: 0.5
+}
+
+
+$(document).ready(function() {
+    $('#items-table-table tr').on('mouseenter', function(e){
+        id_ = $(this).find('[id]').attr('id');
+        layer = items.getLayer(id_); //your feature id here
+        if (layer) {
+            layer.setStyle(highlightStyle);
+        }
+    }).on('mouseout', function(e){
+        id_ = $(this).find('[id]').attr('id');
+        layer = items.getLayer(id_); //your feature id here
+        items.resetStyle(layer);
+    });
+});
+
+const uri = "{{ data['id'] }}" //doi expected as 10.
+
+//retrieve project of this asset
+fetch("{{ config['server']['sparql_url'] }}?default-graph-uri=https%3A%2F%2Fsoilwise-he.github.io%2Fsoil-health&query=" +
+  encodeURIComponent("PREFIX eurio:<http://data.europa.eu/s66#> SELECT ?l (SELECT ?o WHERE {?s ?p ?o FILTER regex(?p,'title','i') FILTER(?s=?l)}) as ?o WHERE {?l ?pred ?obj FILTER (?pred=eurio:hasResult) FILTER regex(?obj,'{{ data['id'] }}','i')}")+
+  "&format=application%2Fsparql-results%2Bjson&timeout=0&signal_void=on")
+  .then(response => response.json())
+  .then(data => data.results.bindings)
+  .then(data => {setListElements(data,"Resource of project:","isByProject")})
+  .catch(err => console.log(err));
+
+// retrieve repositories of this record
+fetch("{{ config['server']['sparql_url'] }}?default-graph-uri=https%3A%2F%2Fsoilwise-he.github.io%2Fsoil-health&query=PREFIX+dcterms%3A%3Chttp%3A%2F%2Fpurl.org%2Fdc%2Fterms%2F%3E%0D%0A%0D%0ASELECT+%3Fo%0D%0AWHERE+%7B%0D%0A%3Fs+%3Fp+%3Fo%0D%0AFILTER+regex%28%3Fp%2C+%22isReferencedBy%22%2C+%22i%22%29%0D%0AFILTER+regex%28%3Fs%2C+%22{{ data['id'] }}%22%2C+%22i%22%29%0D%0A%7D%0D%0A&format=application%2Fsparql-results%2Bjson&timeout=0&signal_void=on")
+  .then(response => response.json())
+  .then(data => data.results.bindings)
+  .then(data => {setListElements(data,"Record also available in:","isReferencedBy")})
+  .catch(err => console.log(err)); 
+
+function setListElements(data,ttl,elm){
+  if (data.length > 0){
+    const div_target = document.getElementById(elm)
+    const div_list = document.createElement("div");
+    const ul_list = document.createElement("ul");
+    const b_title = document.createElement("b");
+    b_title.innerHTML = ttl;
+    div_list.appendChild(b_title);
+    div_list.appendChild(ul_list);
+    for (let i = 0; i < data.length; i++) {
+            if (data[i].o.value) {
+              const li = document.createElement('li');
+              var txt = data[i].l?'<a href="'+data[i].l.value+'" target="_blank">'+data[i].o.value+'</a>':data[i].o.value;
+              li.innerHTML = txt;
+              ul_list.appendChild(li);
+            }
+        }
+    div_target.appendChild(div_list);
+  } 
+}  
+
+// validate links
+link_div = document.getElementById('link-section')
+var link_containers = link_div.getElementsByClassName('col-10'); 
+var link_count = link_containers.length;
+var icon_containers = link_div.getElementsByClassName('col-2');
+
+var api_link = new Array(link_count);
+var icons = new Array(link_count);
+for (var i=0;i < link_count; i++){
+  var div_con = link_containers[i];
+  url_link = div_con.getElementsByTagName('a')[0].href;
+  if (url_link.indexOf("{{ config['server']['url'] }}") > -1){ //if local link
+    u1 = url_link.split('/');
+    ulast = u1.pop()
+    api_link[i] = u1.join('/') + '?identifier=' + ulast;
+  } else {
+    api_link[i] = "{{ config['server']['linky_url'] }}/URL_status_history?url="+ encodeURIComponent(url_link);
+  }
+}
+
+function setStatusValue(res_arr) {
+  for (var i=0; i < res_arr.length; i++){  
+    if (!res_arr[i]){
+      console.log('Failed '+i)
+    } else if (typeof res_arr[i] === "number"){
+      // a sys error occured, skip
+      console.log('error fetch links: '+res_arr[i]);
+    } else if (res_arr[i].features){
+      if (res_arr[i].features.length == 0){ // is a items request
+        link_containers[i].innerHTML = "";
+        icon_containers[i].innerHTML = "";
+      } else {
+        f = res_arr[i].features[0]
+        l = f.links.find(l=>l.rel=='self');
+        if(l){
+          link_containers[i].innerHTML = "<a href='"+ l.href +"'>"+f.properties.title+"</a>";
+          icon_containers[i].innerHTML = "<div class='badge link-icon link-200' title='Status: Ok'>\u00A0</div>";
+        }
+      }
+    } else if (res_arr[i].length > 0) {
+      status = res_arr[i][0].status_code;
+      check = res_arr[i][0].timestamp.split('T')[0];
+      size = res_arr[i][0].link_size;
+      mime = res_arr[i][0].link_type || '';
+      icon_containers[i].innerHTML = "<div class='badge link-icon link-"+ status +
+        "' title='Status: "+status+" Check: "+check+" Type: "+mime+".'>"+(mime.split('/').pop()||"\u00A0")+"</div>";
+      if (size && size > 0){
+        link_containers[i].innerHTML = '<div class="float-end">' + formatBytes(size) + '</div>' + link_containers[i].innerHTML;
+      }
+    } else {
+      icon_containers[i].innerHTML = "<div class='badge link-icon link-unknown' title='Status: Unknown'>\u00A0</div>"
+    }
+  }
+}
+
+function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes'
+
+    const k = 1024
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+}
+
+Promise.all(api_link.map(url => 
+  fetch(url.replace('{','%7B').replace('{','%7D'),{headers: {"Accept": "application/json"}}).then(response => { 
+    if (response.ok) {
+      return response.json() 
+    } else {
+      return response.status
+    }}
+)))
+.then(data => {
+  if (Array.isArray(data)){ 
+    setStatusValue(data)
+  }
+})
+.catch(error => {
+  console.error('Error fetching data:', error);
+});
+
+</script>
+<style>
+.link-icon {
+ display:inline-block;
+ min-width:30px;min-height:20px;
+ border: 1px solid darkgray;
+}
+[class*="link-2"] {
+ background-color: lightgreen;
+ border-color: green;
+}
+[class*="link-4"] {
+  background-color: lightsalmon;
+  border-color: darkorange;
+}
+.link-404, [class*="link-5"] {
+  background-color: red;
+  border-color: darkred;
+}
+
+.link-unknown {
+  background-color: lightgray;
+}
+</style>
+{% endblock %}
+
