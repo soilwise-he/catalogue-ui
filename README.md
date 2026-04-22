@@ -17,5 +17,8 @@ Checkout the repository and build the docker file or copy the content of the /sr
 ---
 
 ## Soilwise-he project
-
-This work has been initiated as part of the [Soilwise-he](https://soilwise-he.eu) project. The project receives funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No. 101112838.
+This work has been initiated as part of the [Soilwise-he](https://soilwise-he.eu) project. The project receives
+funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No.
+101112838. Views and opinions expressed are however those of the author(s) only and do not necessarily
+reflect those of the European Union or Research Executive Agency. Neither the European Union nor the
+granting authority can be held responsible for them.
