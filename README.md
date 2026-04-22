@@ -1,4 +1,4 @@
-# SoilWise Catalogue UI
+# SoilWise Catalogue UI - prototype 2 (pycsw version)
 
 A user interface for the catalogue component.
 
